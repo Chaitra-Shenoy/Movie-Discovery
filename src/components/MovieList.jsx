@@ -1,66 +1,80 @@
 import axios from "axios";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, startTransition } from "react";
 import { MovieCard } from "./MovieCard";
 
-export function MovieList() {
+export function MovieList({ searchInput }) {
+  console.log(searchInput);
   const [movieData, setMovieData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
+  const currentPage = useRef(1);
   const hasMoreMoviesRef = useRef(true);
   const observer = useRef();
   const isFetching = useRef(false);
 
   useEffect(() => {
-    const fetchData = async () => {
+    currentPage.current = 1;
+    hasMoreMoviesRef.current = true;
+    isFetching.current = false;
+    let cancelled = false;
+
+    // Clear list for new search without triggering cascade
+    startTransition(() => {
+      setMovieData([]);
+      setError(false);
+    });
+
+    const mapMovie = (movie) => ({
+      id: movie.id,
+      title: movie.title,
+      overview: movie.overview,
+      release_date: movie.release_date,
+      vote_average: movie.vote_average,
+      vote_count: movie.vote_count,
+      poster_path: `https://image.tmdb.org/t/p/w500${movie.poster_path}`,
+    });
+
+    const fetchPage = async () => {
+      if (isFetching.current || !hasMoreMoviesRef.current) return;
+      isFetching.current = true;
       setLoading(true);
+
       try {
-        const movieDataRaw = await axios.get(
-          `https://api.themoviedb.org/3/discover/movie?page=${currentPage}`,
-          {
-            headers: {
-              accept: "application/json",
-              Authorization: `Bearer ${import.meta.env.VITE_API_BEARER_TOKEN}`,
-            },
+        const url = searchInput
+          ? `https://api.themoviedb.org/3/search/movie?query=${searchInput}&page=${currentPage.current}`
+          : `https://api.themoviedb.org/3/discover/movie?page=${currentPage.current}`;
+
+        const res = await axios.get(url, {
+          headers: {
+            accept: "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_API_BEARER_TOKEN}`,
           },
-        );
+        });
 
-        if (movieDataRaw.status !== 200) {
-          throw new Error("List Movie Endpoint failed!");
-        }
+        if (cancelled) return;
 
-        const moviesData = movieDataRaw.data.results;
-        const structuredMovieList = moviesData.map((movie) => ({
-          id: movie.id,
-          title: movie.title,
-          overview: movie.overview,
-          release_date: movie.release_date,
-          vote_average: movie.vote_average,
-          vote_count: movie.vote_count,
-          poster_path: `https://image.tmdb.org/t/p/w500${movie.poster_path}`,
-        }));
-
+        // Always append to prev — prev will be [] because startTransition cleared it
         setMovieData((prev) => {
-          const existingId = new Set(prev.map((m) => m.id));
+          const existingIds = new Set(prev.map((m) => m.id));
           return [
             ...prev,
-            ...structuredMovieList.filter((movie) => !existingId.has(movie.id)),
+            ...res.data.results
+              .map(mapMovie)
+              .filter((m) => !existingIds.has(m.id)),
           ];
         });
-        hasMoreMoviesRef.current = movieDataRaw.data.total_pages > currentPage;
-      } catch (error) {
-        console.log(error);
-        setError(true);
+
+        hasMoreMoviesRef.current = res.data.total_pages > currentPage.current;
+      } catch (err) {
+        if (!cancelled) setError(true);
       } finally {
-        isFetching.current = false; // finished loading
-        setLoading(false);
+        if (!cancelled) {
+          isFetching.current = false;
+          setLoading(false);
+        }
       }
     };
 
-    fetchData();
-  }, [currentPage]);
-
-  useEffect(() => {
     const interObserver = new IntersectionObserver(
       (entries) => {
         if (
@@ -68,16 +82,22 @@ export function MovieList() {
           !isFetching.current &&
           hasMoreMoviesRef.current
         ) {
-          isFetching.current = true;
-          setCurrentPage((prev) => prev + 1);
+          currentPage.current += 1;
+          fetchPage();
         }
       },
       { threshold: 0.1 },
     );
-    if (observer.current) interObserver.observe(observer.current);
 
-    return () => interObserver.disconnect();
-  }, []);
+    if (observer.current) interObserver.observe(observer.current);
+    fetchPage();
+
+    return () => {
+      cancelled = true;
+      interObserver.disconnect();
+    };
+  }, [searchInput]);
+
   return (
     <>
       <div className="movies-list">
