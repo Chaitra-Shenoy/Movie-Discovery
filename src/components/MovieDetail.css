@@ -1,0 +1,44 @@
+.movie-header-detailed {
+  padding-top: 70px;
+  font-size: 40px;
+  height: auto;
+  text-align: center;
+}
+
+.detailed-view
+{
+  display: flex;
+  flex-direction: row;
+}
+
+.movie-img-detailed {
+  height: 450px;
+  margin-right: 10px;
+}
+
+table {
+  border-collapse: collapse;
+  width: auto;
+}
+
+th, td {
+  border: 1px solid #ddd;
+  padding: 8px;
+}
+
+th {
+  text-align: left;
+  background-color: #f4f4f4;
+  width: 40%;
+}
+
+.comp {
+  display: flex;
+  flex-direction: row;
+  margin-bottom: 5px;
+}
+.comp-logo {
+  width: 25px;
+  margin-right: 5px;
+  object-fit: contain;
+}
